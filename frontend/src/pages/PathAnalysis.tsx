@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Box,
@@ -23,6 +23,7 @@ import {
   Grid,
   Card,
   CardContent,
+  Tooltip,
 } from '@mui/material'
 import { Visibility, AccountTree } from '@mui/icons-material'
 import ReactFlow, {
@@ -63,27 +64,49 @@ function convertTreeToFlow(tree: TreeNode, parentId?: string, x = 0, y = 0, leve
   const edges: Edge[] = []
   const nodeId = `${level}-${x}-${tree.name.substring(0, 10)}`
 
+  const displayName = tree.name.length > 50 ? tree.name.substring(0, 50) + '...' : tree.name
+  const fullName = tree.fullName || tree.name
+
   nodes.push({
     id: nodeId,
     position: { x: x * 250, y: level * 150 },
     data: {
       label: (
-        <Box sx={{ p: 1, textAlign: 'center' }}>
-          <Typography variant="caption" sx={{ display: 'block', fontWeight: 'bold' }}>
-            {tree.name}
-          </Typography>
-          {tree.score !== undefined && (
-            <Chip
-              label={`${tree.score}%`}
-              size="small"
-              color={tree.score >= 70 ? 'success' : tree.score >= 40 ? 'warning' : 'error'}
-              sx={{ mt: 0.5 }}
-            />
-          )}
-          {tree.isPruned && (
-            <Chip label="Podado" size="small" color="default" sx={{ mt: 0.5 }} />
-          )}
-        </Box>
+        <Tooltip
+          title={
+            <Box sx={{ p: 1, maxWidth: 400 }}>
+              <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                {fullName}
+              </Typography>
+              {tree.pruneReason && (
+                <Typography variant="caption" sx={{ display: 'block', mt: 1, fontStyle: 'italic' }}>
+                  Motivo da poda: {tree.pruneReason}
+                </Typography>
+              )}
+            </Box>
+          }
+          arrow
+          placement="top"
+          enterDelay={300}
+          leaveDelay={200}
+        >
+          <Box sx={{ p: 1, textAlign: 'center', cursor: 'pointer' }}>
+            <Typography variant="caption" sx={{ display: 'block', fontWeight: 'bold' }}>
+              {displayName}
+            </Typography>
+            {tree.score !== undefined && (
+              <Chip
+                label={`${tree.score}%`}
+                size="small"
+                color={tree.score >= 70 ? 'success' : tree.score >= 40 ? 'warning' : 'error'}
+                sx={{ mt: 0.5 }}
+              />
+            )}
+            {tree.isPruned && (
+              <Chip label="Podado" size="small" color="default" sx={{ mt: 0.5 }} />
+            )}
+          </Box>
+        </Tooltip>
       ),
     },
     style: {
