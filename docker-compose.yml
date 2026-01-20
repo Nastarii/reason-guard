@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:14-alpine
+    container_name: reasonguard-db
+    environment:
+      POSTGRES_USER: reasonguard
+      POSTGRES_PASSWORD: reasonguard123
+      POSTGRES_DB: reasonguard
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U reasonguard"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: reasonguard-backend
+    environment:
+      DATABASE_URL: postgresql://reasonguard:reasonguard123@db:5432/reasonguard
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
+      CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY}
+      SECRET_KEY: ${SECRET_KEY:-change-this-secret-key}
+      DEBUG: "true"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: reasonguard-frontend
+    environment:
+      VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY}
+      VITE_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+  demo:
+    build:
+      context: ./demo
+      dockerfile: Dockerfile
+    container_name: reasonguard-demo
+    environment:
+      REASONGUARD_API_URL: http://backend:8000
+      REASONGUARD_API_TOKEN: ${REASONGUARD_API_TOKEN:-demo-token}
+    ports:
+      - "8501:8501"
+    depends_on:
+      - backend
+    volumes:
+      - ./demo:/app
+
+volumes:
+  postgres_data:
