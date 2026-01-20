@@ -132,7 +132,7 @@ class PathAnalysisResponse(BaseModel):
     original_problem: str
     decomposition: Dict[str, Any]
     exploration_tree: Dict[str, Any]
-    pruned_paths: Optional[Dict[str, Any]]
+    pruned_paths: Optional[List[Dict[str, Any]]]
     selected_path: Optional[Dict[str, Any]]
     total_nodes_explored: int
     total_paths_pruned: int
