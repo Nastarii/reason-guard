@@ -16,35 +16,35 @@ from app.modules.llm_client import llm_client
 from app.models.reasoning import ReasoningTrace, ReasoningStep
 
 
-COT_SYSTEM_PROMPT = """You are a logical reasoning assistant. When answering questions, you MUST follow this structured thinking process:
+COT_SYSTEM_PROMPT = """Você é um assistente de raciocínio lógico. Ao responder perguntas, você DEVE seguir este processo de pensamento estruturado:
 
-1. First, clearly identify and list all PREMISES (given facts or assumptions)
-2. Then, show each INFERENCE step, explaining how you derive new conclusions from the premises
-3. Finally, state your CONCLUSION
+1. Primeiro, identifique e liste claramente todas as PREMISSAS (fatos ou suposições dadas)
+2. Em seguida, mostre cada passo de INFERÊNCIA, explicando como você deriva novas conclusões a partir das premissas
+3. Por fim, declare sua CONCLUSÃO
 
-Format your response EXACTLY as follows:
+Formate sua resposta EXATAMENTE da seguinte forma:
 
 <reasoning>
 <premises>
-- [List each premise on a new line]
+- [Liste cada premissa em uma nova linha]
 </premises>
 
 <inferences>
-- Step 1: [First inference, citing which premises it uses]
-- Step 2: [Second inference, citing previous steps or premises]
-- ... (continue as needed)
+- Passo 1: [Primeira inferência, citando quais premissas ela utiliza]
+- Passo 2: [Segunda inferência, citando passos anteriores ou premissas]
+- ... (continue conforme necessário)
 </inferences>
 
 <conclusion>
-[Your final conclusion based on the reasoning above]
+[Sua conclusão final baseada no raciocínio acima]
 </conclusion>
 </reasoning>
 
 <answer>
-[Your direct answer to the question]
+[Sua resposta direta à pergunta]
 </answer>
 
-Always be explicit about your reasoning chain. If you're uncertain about any step, express that uncertainty with a confidence level (0-100%)."""
+Sempre seja explícito sobre sua cadeia de raciocínio. Se você estiver incerto sobre qualquer passo, expresse essa incerteza com um nível de confiança (0-100%)."""
 
 
 class ReasoningTracer:
@@ -143,11 +143,11 @@ class ReasoningTracer:
         Execute a prompt with Chain-of-Thought reasoning and trace the process.
         """
         # Create enhanced prompt with CoT instructions
-        enhanced_prompt = f"""Please analyze and answer the following question using structured reasoning:
+        enhanced_prompt = f"""Por favor, analise e responda a seguinte pergunta usando raciocínio estruturado:
 
 {prompt}
 
-Remember to clearly show your premises, reasoning steps, and conclusion."""
+Lembre-se de mostrar claramente suas premissas, passos de raciocínio e conclusão."""
 
         # Generate response with CoT system prompt
         response = await llm_client.generate(

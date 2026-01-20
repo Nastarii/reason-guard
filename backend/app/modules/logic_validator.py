@@ -15,90 +15,90 @@ from app.modules.llm_client import llm_client
 from app.models.reasoning import LogicGraph, LogicNode, LogicEdge, ReasoningTrace
 
 
-EXTRACT_PROPOSITIONS_PROMPT = """Analyze the following reasoning and extract all propositions (premises, inferences, and conclusions).
+EXTRACT_PROPOSITIONS_PROMPT = """Analise o seguinte raciocínio e extraia todas as proposições (premissas, inferências e conclusões).
 
-Reasoning:
+Raciocínio:
 {reasoning}
 
-For each proposition, identify:
-1. The proposition type (premise, inference, or conclusion)
-2. The exact content
-3. Any dependencies (what other propositions it relies on)
-4. Whether it seems to be a hidden/unstated assumption
+Para cada proposição, identifique:
+1. O tipo da proposição (premissa, inferência ou conclusão)
+2. O conteúdo exato
+3. Quaisquer dependências (de quais outras proposições ela depende)
+4. Se parece ser uma suposição oculta/não declarada
 
-Format your response as:
+Formate sua resposta como:
 
 <propositions>
 <prop id="1">
 <type>[premise|inference|conclusion|hidden_premise]</type>
-<content>[The proposition]</content>
-<depends_on>[comma-separated list of prop IDs, or "none"]</depends_on>
+<content>[A proposição]</content>
+<depends_on>[lista de IDs de proposições separados por vírgula, ou "none"]</depends_on>
 <confidence>[0-100]</confidence>
 </prop>
-... (repeat for each proposition)
+... (repita para cada proposição)
 </propositions>
 
 <relationships>
 <rel>
-<from>[prop ID]</from>
-<to>[prop ID]</to>
+<from>[ID da proposição]</from>
+<to>[ID da proposição]</to>
 <type>[supports|contradicts|implies|depends_on]</type>
 <strength>[0-100]</strength>
 </rel>
-... (repeat for each relationship)
+... (repita para cada relacionamento)
 </relationships>"""
 
 
-VALIDATE_LOGIC_PROMPT = """Analyze the following logical structure for issues:
+VALIDATE_LOGIC_PROMPT = """Analise a seguinte estrutura lógica em busca de problemas:
 
-Propositions:
+Proposições:
 {propositions}
 
-Relationships:
+Relacionamentos:
 {relationships}
 
-Please identify:
-1. CONTRADICTIONS: Any propositions that contradict each other
-2. LOGIC GAPS: Missing steps in the reasoning chain
-3. HIDDEN PREMISES: Unstated assumptions that the reasoning relies on
-4. CIRCULARITY: Any circular reasoning patterns
+Por favor, identifique:
+1. CONTRADIÇÕES: Quaisquer proposições que se contradizem
+2. LACUNAS LÓGICAS: Passos faltantes na cadeia de raciocínio
+3. PREMISSAS OCULTAS: Suposições não declaradas das quais o raciocínio depende
+4. CIRCULARIDADE: Quaisquer padrões de raciocínio circular
 
-Format your response as:
+Formate sua resposta como:
 
 <analysis>
 <contradictions>
 <item>
-<props>[Prop IDs involved]</props>
-<explanation>[Why they contradict]</explanation>
+<props>[IDs das proposições envolvidas]</props>
+<explanation>[Por que elas se contradizem]</explanation>
 <severity>[high|medium|low]</severity>
 </item>
-... (if any)
+... (se houver)
 </contradictions>
 
 <logic_gaps>
 <item>
-<between>[Prop IDs where gap exists]</between>
-<missing>[What step is missing]</missing>
+<between>[IDs das proposições onde existe a lacuna]</between>
+<missing>[Qual passo está faltando]</missing>
 <severity>[high|medium|low]</severity>
 </item>
-... (if any)
+... (se houver)
 </logic_gaps>
 
 <hidden_premises>
 <item>
-<relied_by>[Prop IDs that rely on this]</relied_by>
-<premise>[The hidden assumption]</premise>
+<relied_by>[IDs das proposições que dependem desta]</relied_by>
+<premise>[A suposição oculta]</premise>
 <importance>[high|medium|low]</importance>
 </item>
-... (if any)
+... (se houver)
 </hidden_premises>
 
 <circularity>
 <item>
-<cycle>[Prop IDs in the cycle]</cycle>
-<explanation>[How the circularity manifests]</explanation>
+<cycle>[IDs das proposições no ciclo]</cycle>
+<explanation>[Como a circularidade se manifesta]</explanation>
 </item>
-... (if any)
+... (se houver)
 </circularity>
 
 <overall_validity>[0-100]</overall_validity>

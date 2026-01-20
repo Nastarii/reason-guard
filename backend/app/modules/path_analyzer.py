@@ -19,55 +19,55 @@ from app.models.reasoning import PathAnalysis, PathNode
 
 
 # Single comprehensive prompt for complete ToT analysis
-TOT_ANALYSIS_PROMPT = """You are an expert problem-solving analyst using the Tree of Thought methodology.
+TOT_ANALYSIS_PROMPT = """Você é um analista especialista em resolução de problemas usando a metodologia Árvore de Pensamento (Tree of Thought).
 
-Analyze the following problem completely in ONE response:
+Analise o seguinte problema completamente em UMA resposta:
 
-PROBLEM: {problem}
+PROBLEMA: {problem}
 
-Perform a complete Tree of Thought analysis with the following structure:
+Realize uma análise completa de Árvore de Pensamento com a seguinte estrutura:
 
-1. DECOMPOSITION: Break down the problem into 2-4 key subproblems
-2. HYPOTHESIS GENERATION: For each subproblem, generate 2-3 possible approaches
-3. EVALUATION: Score each approach (0-100) and decide if it should be pruned (score < 40)
-4. BEST PATH SELECTION: Identify the most promising solution path
+1. DECOMPOSIÇÃO: Divida o problema em 2-4 subproblemas principais
+2. GERAÇÃO DE HIPÓTESES: Para cada subproblema, gere 2-3 abordagens possíveis
+3. AVALIAÇÃO: Pontue cada abordagem (0-100) e decida se deve ser podada (pontuação < 40)
+4. SELEÇÃO DO MELHOR CAMINHO: Identifique o caminho de solução mais promissor
 
-Respond EXACTLY in this JSON format (no markdown, no extra text):
+Responda EXATAMENTE neste formato JSON (sem markdown, sem texto extra):
 {{
-    "main_goal": "Clear statement of the main goal",
-    "dependencies": "Brief description of dependencies between subproblems",
+    "main_goal": "Declaração clara do objetivo principal",
+    "dependencies": "Breve descrição das dependências entre subproblemas",
     "subproblems": [
         {{
-            "description": "Subproblem description",
+            "description": "Descrição do subproblema",
             "hypotheses": [
                 {{
-                    "approach": "Approach description",
-                    "benefits": "Key benefits",
-                    "risks": "Key risks",
+                    "approach": "Descrição da abordagem",
+                    "benefits": "Principais benefícios",
+                    "risks": "Principais riscos",
                     "score": 75,
                     "is_pruned": false,
                     "prune_reason": null,
-                    "implementation_steps": ["Step 1", "Step 2"]
+                    "implementation_steps": ["Passo 1", "Passo 2"]
                 }}
             ]
         }}
     ],
     "best_path": {{
-        "subproblem": "The subproblem being solved",
-        "selected_approach": "The best approach",
+        "subproblem": "O subproblema sendo resolvido",
+        "selected_approach": "A melhor abordagem",
         "score": 85,
-        "benefits": "Why this is the best choice",
-        "implementation_steps": ["Step 1", "Step 2", "Step 3"]
+        "benefits": "Por que esta é a melhor escolha",
+        "implementation_steps": ["Passo 1", "Passo 2", "Passo 3"]
     }},
-    "summary": "Brief summary of the analysis and recommendation"
+    "summary": "Breve resumo da análise e recomendação"
 }}
 
-IMPORTANT:
-- Generate exactly 2-4 subproblems (keep it focused)
-- Generate exactly 2-3 hypotheses per subproblem
-- Prune hypotheses with score < 40
-- Select the single best path based on highest score
-- Be concise but thorough"""
+IMPORTANTE:
+- Gere exatamente 2-4 subproblemas (mantenha o foco)
+- Gere exatamente 2-3 hipóteses por subproblema
+- Pode hipóteses com pontuação < 40
+- Selecione o único melhor caminho baseado na maior pontuação
+- Seja conciso, mas completo"""
 
 
 class PathAnalyzer:

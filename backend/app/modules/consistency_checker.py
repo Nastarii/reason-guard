@@ -4,9 +4,10 @@ Executes the same query multiple times with variations,
 calculates convergence rate, and generates a confidence score.
 """
 
+import asyncio
 import re
 import json
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 from uuid import UUID
 from sqlalchemy.orm import Session
 import numpy as np
@@ -14,54 +15,52 @@ import numpy as np
 from app.modules.llm_client import llm_client
 from app.models.reasoning import ConsistencyCheck
 
+# Maximum concurrent requests to avoid overwhelming the LLM API
+MAX_CONCURRENT_REQUESTS = 5
 
-VARIATION_PROMPT = """Generate {num_variations} semantically equivalent variations of the following query.
-Each variation should ask the same thing but use different wording, structure, or perspective.
 
-Original query: {query}
+VARIATION_PROMPT = """Gere {num_variations} variações semanticamente equivalentes da seguinte consulta.
+Cada variação deve perguntar a mesma coisa, mas usar palavras, estrutura ou perspectiva diferentes.
 
-Format your response as:
+Consulta original: {query}
+
+Formate sua resposta como:
 <variations>
-<v1>[First variation]</v1>
-<v2>[Second variation]</v2>
-... (and so on)
+<v1>[Primeira variação]</v1>
+<v2>[Segunda variação]</v2>
+... (e assim por diante)
 </variations>"""
 
 
-COMPARE_RESPONSES_PROMPT = """Compare the following responses to determine if they are semantically consistent.
-Identify the core claims/conclusions in each response and check if they agree or diverge.
+COMPARE_ALL_RESPONSES_PROMPT = """Analise as seguintes {num_responses} respostas para a mesma consulta quanto à consistência semântica.
+Identifique as afirmações/conclusões principais em todas as respostas e determine onde elas concordam ou divergem.
 
-Response 1: {response1}
+{responses_text}
 
-Response 2: {response2}
-
-Format your analysis as:
-<comparison>
-<core_claims_1>
-- [Claim 1 from response 1]
-- [Claim 2 from response 1]
+Formate sua análise como:
+<analysis>
+<core_claims>
+- [Afirmação principal encontrada nas respostas]
+- [Outra afirmação]
 ...
-</core_claims_1>
-
-<core_claims_2>
-- [Claim 1 from response 2]
-- [Claim 2 from response 2]
-...
-</core_claims_2>
+</core_claims>
 
 <agreements>
-- [Point where they agree]
+- [Ponto onde a maioria/todas as respostas concordam]
 ...
 </agreements>
 
 <divergences>
-- [Point where they diverge]
-- [Severity: high/medium/low]
+- [Ponto de divergência] | Respostas: [liste quais respostas divergem, ex.: "1,3 vs 2,4,5"] | Severidade: [high/medium/low]
 ...
 </divergences>
 
-<similarity_score>[0-100]</similarity_score>
-</comparison>"""
+<pairwise_scores>
+{pairwise_format}
+</pairwise_scores>
+
+<overall_similarity>[0-100]</overall_similarity>
+</analysis>"""
 
 
 class ConsistencyChecker:
@@ -69,6 +68,12 @@ class ConsistencyChecker:
 
     def __init__(self, db: Session):
         self.db = db
+        self._semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+
+    async def _execute_with_semaphore(self, coro):
+        """Execute a coroutine with semaphore to limit concurrency."""
+        async with self._semaphore:
+            return await coro
 
     async def _generate_variations(
         self,
@@ -102,17 +107,30 @@ class ConsistencyChecker:
 
         return variations
 
-    async def _compare_responses(
+    async def _compare_all_responses(
         self,
-        response1: str,
-        response2: str,
+        responses: List[Dict[str, Any]],
         provider: str,
         model: Optional[str],
     ) -> Dict[str, Any]:
-        """Compare two responses for semantic consistency."""
-        prompt = COMPARE_RESPONSES_PROMPT.format(
-            response1=response1,
-            response2=response2,
+        """Compare all responses in a single request for semantic consistency."""
+        # Build responses text
+        responses_text = "\n\n".join([
+            f"Response {i+1}:\n{r['response']}"
+            for i, r in enumerate(responses)
+        ])
+
+        # Build pairwise format instruction
+        pairs = []
+        for i in range(len(responses)):
+            for j in range(i + 1, len(responses)):
+                pairs.append(f"{i+1}-{j+1}: [score 0-100]")
+        pairwise_format = "\n".join(pairs)
+
+        prompt = COMPARE_ALL_RESPONSES_PROMPT.format(
+            num_responses=len(responses),
+            responses_text=responses_text,
+            pairwise_format=pairwise_format,
         )
 
         response = await llm_client.generate(
@@ -124,40 +142,53 @@ class ConsistencyChecker:
 
         content = response["content"]
 
-        comparison = {
-            "similarity_score": 50,
+        result = {
+            "overall_similarity": 50,
+            "pairwise_scores": {},
             "agreements": [],
             "divergences": [],
         }
 
-        # Parse similarity score
-        score_match = re.search(r"<similarity_score>(\d+)</similarity_score>", content)
-        if score_match:
-            comparison["similarity_score"] = int(score_match.group(1))
+        # Parse overall similarity
+        overall_match = re.search(r"<overall_similarity>(\d+)</overall_similarity>", content)
+        if overall_match:
+            result["overall_similarity"] = int(overall_match.group(1))
+
+        # Parse pairwise scores
+        pairwise_match = re.search(r"<pairwise_scores>(.*?)</pairwise_scores>", content, re.DOTALL)
+        if pairwise_match:
+            text = pairwise_match.group(1)
+            for line in text.split("\n"):
+                line = line.strip()
+                if not line:
+                    continue
+                # Parse format like "1-2: 85" or "1-2: [85]"
+                score_match = re.search(r"(\d+)-(\d+):\s*\[?(\d+)\]?", line)
+                if score_match:
+                    i, j, score = int(score_match.group(1)), int(score_match.group(2)), int(score_match.group(3))
+                    result["pairwise_scores"][(i, j)] = score
 
         # Parse agreements
         agreements_match = re.search(r"<agreements>(.*?)</agreements>", content, re.DOTALL)
         if agreements_match:
             text = agreements_match.group(1)
-            agreements = [
+            result["agreements"] = [
                 line.strip().lstrip("- ").strip()
                 for line in text.split("\n")
                 if line.strip() and line.strip() != "-"
             ]
-            comparison["agreements"] = agreements
 
         # Parse divergences
         divergences_match = re.search(r"<divergences>(.*?)</divergences>", content, re.DOTALL)
         if divergences_match:
             text = divergences_match.group(1)
-            divergences = [
+            result["divergences"] = [
                 line.strip().lstrip("- ").strip()
                 for line in text.split("\n")
                 if line.strip() and line.strip() != "-"
             ]
-            comparison["divergences"] = divergences
 
-        return comparison
+        return result
 
     def _calculate_convergence_rate(self, similarity_scores: List[float]) -> float:
         """Calculate overall convergence rate from pairwise similarity scores."""
@@ -212,42 +243,53 @@ class ConsistencyChecker:
             variations.append(query)
         variations = variations[:num_runs]
 
-        # Execute each query
-        responses = []
-        for i, variation in enumerate(variations):
-            response = await llm_client.generate(
-                prompt=variation,
-                provider=provider,
-                model=model,
-                temperature=temperature,
+        # Execute all queries in parallel with semaphore limiting concurrency
+        async def execute_query(index: int, variation: str) -> Dict[str, Any]:
+            response = await self._execute_with_semaphore(
+                llm_client.generate(
+                    prompt=variation,
+                    provider=provider,
+                    model=model,
+                    temperature=temperature,
+                )
             )
-
-            responses.append({
-                "run": i + 1,
+            return {
+                "run": index + 1,
                 "query": variation,
                 "response": response["content"],
                 "model": response["model"],
-            })
+            }
 
-        # Compare responses pairwise
+        # Run all queries concurrently (limited by semaphore)
+        query_tasks = [
+            execute_query(i, variation)
+            for i, variation in enumerate(variations)
+        ]
+        responses = await asyncio.gather(*query_tasks)
+        responses = list(responses)
+
+        # Compare all responses in a single request
+        comparison_result = await self._compare_all_responses(
+            responses, provider, model
+        )
+
+        # Extract pairwise similarity scores
         similarity_scores = []
-        all_divergences = []
-
         for i in range(len(responses)):
             for j in range(i + 1, len(responses)):
-                comparison = await self._compare_responses(
-                    responses[i]["response"],
-                    responses[j]["response"],
-                    provider,
-                    model,
+                score = comparison_result["pairwise_scores"].get(
+                    (i + 1, j + 1),
+                    comparison_result["overall_similarity"]  # Fallback to overall
                 )
-                similarity_scores.append(comparison["similarity_score"])
+                similarity_scores.append(score)
 
-                for div in comparison["divergences"]:
-                    all_divergences.append({
-                        "between_runs": [i + 1, j + 1],
-                        "point": div,
-                    })
+        # Process divergences
+        all_divergences = []
+        for div in comparison_result["divergences"]:
+            all_divergences.append({
+                "between_runs": "multiple",
+                "point": div,
+            })
 
         # Calculate metrics
         convergence_rate = self._calculate_convergence_rate(similarity_scores)
@@ -308,15 +350,15 @@ class ConsistencyChecker:
             "confidence_score": f"{check.confidence_score * 100:.1f}%",
             "num_divergent_points": len(check.divergent_points) if check.divergent_points else 0,
             "status": (
-                "High Consistency" if check.convergence_rate > 0.8
-                else "Medium Consistency" if check.convergence_rate > 0.5
-                else "Low Consistency"
+                "Alta Consistência" if check.convergence_rate > 0.8
+                else "Média Consistência" if check.convergence_rate > 0.5
+                else "Baixa Consistência"
             ),
             "recommendation": (
-                "Results are highly reliable"
+                "Os resultados são altamente confiáveis"
                 if check.confidence_score > 0.8
-                else "Review divergent points before relying on results"
+                else "Revise os pontos divergentes antes de confiar nos resultados"
                 if check.confidence_score > 0.5
-                else "Results may be unreliable - consider rephrasing the query"
+                else "Os resultados podem não ser confiáveis - considere reformular a consulta"
             ),
         }
