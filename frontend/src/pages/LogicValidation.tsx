@@ -94,31 +94,55 @@ const edgeTypeColors: Record<string, string> = {
 }
 
 function GraphVisualization({ data }: { data: GraphVisualization }) {
-  const initialNodes: Node[] = data.nodes.map((node, index) => ({
-    id: node.id,
-    position: { x: (index % 3) * 300 + 50, y: Math.floor(index / 3) * 150 + 50 },
-    data: {
-      label: (
-        <Box sx={{ p: 1 }}>
-          <Chip label={node.type} size="small" sx={{ mb: 0.5 }} />
-          <Typography variant="caption" sx={{ display: 'block' }}>
-            {node.label}
-          </Typography>
-          {node.confidence !== null && (
-            <Typography variant="caption" color="text.secondary">
-              Confiança: {(node.confidence * 100).toFixed(0)}%
-            </Typography>
-          )}
-        </Box>
-      ),
-    },
-    style: {
-      backgroundColor: nodeTypeColors[node.type] || '#fff',
-      border: '1px solid #ccc',
-      borderRadius: 8,
-      width: 220,
-    },
-  }))
+  const initialNodes: Node[] = data.nodes.map((node, index) => {
+    const displayLabel = node.label.length > 40 ? node.label.substring(0, 40) + '...' : node.label
+    const fullContent = node.fullContent || node.label
+
+    return {
+      id: node.id,
+      position: { x: (index % 3) * 300 + 50, y: Math.floor(index / 3) * 150 + 50 },
+      data: {
+        label: (
+          <Tooltip
+            title={
+              <Box sx={{ p: 1, maxWidth: 400 }}>
+                <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', mb: 1 }}>
+                  {fullContent}
+                </Typography>
+                {node.confidence !== null && (
+                  <Typography variant="caption" sx={{ display: 'block', color: 'grey.300' }}>
+                    Confiança: {(node.confidence * 100).toFixed(0)}%
+                  </Typography>
+                )}
+              </Box>
+            }
+            arrow
+            placement="top"
+            enterDelay={300}
+            leaveDelay={200}
+          >
+            <Box sx={{ p: 1, cursor: 'pointer' }}>
+              <Chip label={node.type} size="small" sx={{ mb: 0.5 }} />
+              <Typography variant="caption" sx={{ display: 'block' }}>
+                {displayLabel}
+              </Typography>
+              {node.confidence !== null && (
+                <Typography variant="caption" color="text.secondary">
+                  Confiança: {(node.confidence * 100).toFixed(0)}%
+                </Typography>
+              )}
+            </Box>
+          </Tooltip>
+        ),
+      },
+      style: {
+        backgroundColor: nodeTypeColors[node.type] || '#fff',
+        border: '1px solid #ccc',
+        borderRadius: 8,
+        width: 220,
+      },
+    }
+  })
 
   const initialEdges: Edge[] = data.edges.map((edge) => ({
     id: edge.id,
