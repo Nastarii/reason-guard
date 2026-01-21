@@ -38,7 +38,7 @@ import {
   TrendingUp,
   Warning,
 } from '@mui/icons-material'
-import { getConsistencyChecks, getConsistencyCheck, getConsistencyCheckSummary } from '../services/api'
+import { getConsistencyChecks, getConsistencyCheckSummary } from '../services/api'
 
 interface ConsistencyCheckData {
   id: string
@@ -53,7 +53,7 @@ interface ConsistencyCheckData {
   convergence_rate: number
   confidence_score: number
   divergent_points: Array<{
-    between_runs: number[]
+    between_runs: number[] | string
     point: string
   }> | null
   total_runs: number
@@ -71,12 +71,6 @@ export default function ConsistencyChecks() {
   const { data: checks, isLoading, error } = useQuery({
     queryKey: ['consistencyChecks'],
     queryFn: () => getConsistencyChecks(100).then((res) => res.data),
-  })
-
-  const { data: checkDetails, isLoading: detailsLoading } = useQuery({
-    queryKey: ['consistencyCheck', selectedCheck?.id],
-    queryFn: () => getConsistencyCheck(selectedCheck!.id).then((res) => res.data),
-    enabled: !!selectedCheck?.id && detailsOpen,
   })
 
   const { data: summary } = useQuery({
@@ -224,18 +218,14 @@ export default function ConsistencyChecks() {
           </Box>
         </DialogTitle>
         <DialogContent dividers>
-          {detailsLoading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-              <CircularProgress />
-            </Box>
-          ) : checkDetails ? (
+          {selectedCheck && (
             <Box>
               <Card variant="outlined" sx={{ mb: 3 }}>
                 <CardContent>
                   <Typography variant="subtitle2" color="text.secondary">
                     Consulta Original
                   </Typography>
-                  <Typography>{checkDetails.original_query}</Typography>
+                  <Typography>{selectedCheck.original_query}</Typography>
                 </CardContent>
               </Card>
 
@@ -246,7 +236,7 @@ export default function ConsistencyChecks() {
                       <Typography variant="subtitle2" color="text.secondary">
                         Execuções
                       </Typography>
-                      <Typography variant="h4">{checkDetails.total_runs}</Typography>
+                      <Typography variant="h4">{selectedCheck.total_runs}</Typography>
                     </CardContent>
                   </Card>
                 </Grid>
@@ -257,10 +247,10 @@ export default function ConsistencyChecks() {
                         Taxa de Convergência
                       </Typography>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography variant="h4" color={getStatusColor(checkDetails.convergence_rate) + '.main'}>
-                          {(checkDetails.convergence_rate * 100).toFixed(0)}%
+                        <Typography variant="h4" color={getStatusColor(selectedCheck.convergence_rate) + '.main'}>
+                          {(selectedCheck.convergence_rate * 100).toFixed(0)}%
                         </Typography>
-                        <TrendingUp color={getStatusColor(checkDetails.convergence_rate)} />
+                        <TrendingUp color={getStatusColor(selectedCheck.convergence_rate)} />
                       </Box>
                     </CardContent>
                   </Card>
@@ -271,8 +261,8 @@ export default function ConsistencyChecks() {
                       <Typography variant="subtitle2" color="text.secondary">
                         Score de Confiança
                       </Typography>
-                      <Typography variant="h4" color={getStatusColor(checkDetails.confidence_score) + '.main'}>
-                        {(checkDetails.confidence_score * 100).toFixed(0)}%
+                      <Typography variant="h4" color={getStatusColor(selectedCheck.confidence_score) + '.main'}>
+                        {(selectedCheck.confidence_score * 100).toFixed(0)}%
                       </Typography>
                     </CardContent>
                   </Card>
@@ -284,7 +274,7 @@ export default function ConsistencyChecks() {
                         Pontos Divergentes
                       </Typography>
                       <Typography variant="h4">
-                        {checkDetails.divergent_points?.length || 0}
+                        {selectedCheck.divergent_points?.length || 0}
                       </Typography>
                     </CardContent>
                   </Card>
@@ -293,7 +283,7 @@ export default function ConsistencyChecks() {
 
               {summary && (
                 <Alert
-                  severity={checkDetails.confidence_score >= 0.8 ? 'success' : checkDetails.confidence_score >= 0.5 ? 'warning' : 'error'}
+                  severity={selectedCheck.confidence_score >= 0.8 ? 'success' : selectedCheck.confidence_score >= 0.5 ? 'warning' : 'error'}
                   sx={{ mb: 3 }}
                 >
                   <Typography variant="subtitle2">{summary.status}</Typography>
@@ -305,15 +295,15 @@ export default function ConsistencyChecks() {
                 Respostas por Execução
               </Typography>
 
-              {checkDetails.responses?.map((response: any, index: number) => (
+              {selectedCheck.responses?.map((response: any, index: number) => (
                 <Accordion key={index}>
                   <AccordionSummary expandIcon={<ExpandMore />}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
                       <Chip label={`Execução ${response.run}`} size="small" />
                       <Typography variant="body2" color="text.secondary" sx={{ flexGrow: 1 }}>
-                        {response.query.length > 80
+                        {response.query?.length > 80
                           ? response.query.substring(0, 80) + '...'
-                          : response.query}
+                          : response.query || 'Consulta original'}
                       </Typography>
                     </Box>
                   </AccordionSummary>
@@ -324,7 +314,7 @@ export default function ConsistencyChecks() {
                           Variação da Consulta
                         </Typography>
                         <Typography variant="body2" sx={{ mb: 2 }}>
-                          {response.query}
+                          {response.query || selectedCheck.original_query}
                         </Typography>
                         <Typography variant="subtitle2" color="text.secondary" gutterBottom>
                           Resposta
@@ -338,7 +328,7 @@ export default function ConsistencyChecks() {
                 </Accordion>
               ))}
 
-              {checkDetails.divergent_points && checkDetails.divergent_points.length > 0 && (
+              {selectedCheck.divergent_points && selectedCheck.divergent_points.length > 0 && (
                 <Box sx={{ mt: 3 }}>
                   <Typography variant="h6" gutterBottom>
                     Pontos Divergentes
@@ -346,11 +336,15 @@ export default function ConsistencyChecks() {
                   <Card variant="outlined" sx={{ borderColor: 'warning.main' }}>
                     <CardContent>
                       <List dense>
-                        {checkDetails.divergent_points.map((point: any, index: number) => (
+                        {selectedCheck.divergent_points.map((point: any, index: number) => (
                           <ListItem key={index}>
                             <ListItemText
                               primary={point.point}
-                              secondary={`Entre execuções: ${point.between_runs.join(' e ')}`}
+                              secondary={`Entre execuções: ${
+                                Array.isArray(point.between_runs)
+                                  ? point.between_runs.join(' e ')
+                                  : point.between_runs
+                              }`}
                             />
                             <Warning color="warning" />
                           </ListItem>
@@ -361,8 +355,6 @@ export default function ConsistencyChecks() {
                 </Box>
               )}
             </Box>
-          ) : (
-            <Typography>Erro ao carregar detalhes</Typography>
           )}
         </DialogContent>
         <DialogActions>
