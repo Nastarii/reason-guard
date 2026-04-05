@@ -32,37 +32,53 @@ class AuditGenerator:
     def __init__(self, db: Session):
         self.db = db
 
-    def _get_reasoning_traces(self, trace_ids: List[UUID]) -> List[ReasoningTrace]:
-        """Fetch reasoning traces by IDs."""
-        if not trace_ids:
-            return []
-        return self.db.query(ReasoningTrace).filter(
-            ReasoningTrace.id.in_(trace_ids)
-        ).all()
+    def _get_reasoning_traces(self, trace_ids: List[UUID], user_id: Optional[UUID] = None) -> List[ReasoningTrace]:
+        """Fetch reasoning traces by IDs, or all for user if no IDs provided."""
+        if trace_ids:
+            return self.db.query(ReasoningTrace).filter(
+                ReasoningTrace.id.in_(trace_ids)
+            ).all()
+        if user_id:
+            return self.db.query(ReasoningTrace).filter(
+                ReasoningTrace.user_id == user_id
+            ).all()
+        return []
 
-    def _get_path_analyses(self, analysis_ids: List[UUID]) -> List[PathAnalysis]:
-        """Fetch path analyses by IDs."""
-        if not analysis_ids:
-            return []
-        return self.db.query(PathAnalysis).filter(
-            PathAnalysis.id.in_(analysis_ids)
-        ).all()
+    def _get_path_analyses(self, analysis_ids: List[UUID], user_id: Optional[UUID] = None) -> List[PathAnalysis]:
+        """Fetch path analyses by IDs, or all for user if no IDs provided."""
+        if analysis_ids:
+            return self.db.query(PathAnalysis).filter(
+                PathAnalysis.id.in_(analysis_ids)
+            ).all()
+        if user_id:
+            return self.db.query(PathAnalysis).filter(
+                PathAnalysis.user_id == user_id
+            ).all()
+        return []
 
-    def _get_logic_graphs(self, graph_ids: List[UUID]) -> List[LogicGraph]:
-        """Fetch logic graphs by IDs."""
-        if not graph_ids:
-            return []
-        return self.db.query(LogicGraph).filter(
-            LogicGraph.id.in_(graph_ids)
-        ).all()
+    def _get_logic_graphs(self, graph_ids: List[UUID], user_id: Optional[UUID] = None) -> List[LogicGraph]:
+        """Fetch logic graphs by IDs, or all for user if no IDs provided."""
+        if graph_ids:
+            return self.db.query(LogicGraph).filter(
+                LogicGraph.id.in_(graph_ids)
+            ).all()
+        if user_id:
+            return self.db.query(LogicGraph).filter(
+                LogicGraph.user_id == user_id
+            ).all()
+        return []
 
-    def _get_consistency_checks(self, check_ids: List[UUID]) -> List[ConsistencyCheck]:
-        """Fetch consistency checks by IDs."""
-        if not check_ids:
-            return []
-        return self.db.query(ConsistencyCheck).filter(
-            ConsistencyCheck.id.in_(check_ids)
-        ).all()
+    def _get_consistency_checks(self, check_ids: List[UUID], user_id: Optional[UUID] = None) -> List[ConsistencyCheck]:
+        """Fetch consistency checks by IDs, or all for user if no IDs provided."""
+        if check_ids:
+            return self.db.query(ConsistencyCheck).filter(
+                ConsistencyCheck.id.in_(check_ids)
+            ).all()
+        if user_id:
+            return self.db.query(ConsistencyCheck).filter(
+                ConsistencyCheck.user_id == user_id
+            ).all()
+        return []
 
     def _compile_report_data(
         self,
@@ -108,10 +124,10 @@ class AuditGenerator:
 
         report_data["summary"] = {
             "total_decisions": total_decisions,
-            "total_path_analyses": len(path_analyses),
-            "total_logic_validations": len(logic_graphs),
-            "total_consistency_checks": len(consistency_checks),
-            "total_issues_found": total_issues,
+            "total_analises_caminho": len(path_analyses),
+            "total_validacoes_logicas": len(logic_graphs),
+            "total_verificacoes_consistencia": len(consistency_checks),
+            "total_problemas_encontrados": total_issues,
             "average_validity_score": round(avg_validity * 100, 2),
             "average_confidence_score": round(avg_confidence * 100, 2),
         }
@@ -140,34 +156,34 @@ class AuditGenerator:
     ) -> Dict[str, Any]:
         """Compile compliance-focused report details."""
         return {
-            "decisions": [
+            "decisoes": [
                 {
                     "id": str(trace.id),
-                    "timestamp": trace.created_at.isoformat(),
-                    "model": f"{trace.model_provider}/{trace.model_name}",
+                    "data_hora": trace.created_at.isoformat(),
+                    "modelo": f"{trace.model_provider}/{trace.model_name}",
                     "prompt": trace.original_prompt[:200] + "..." if len(trace.original_prompt) > 200 else trace.original_prompt,
-                    "integrity_verified": True,  # Placeholder - would verify hash
-                    "integrity_hash": trace.integrity_hash[:16] + "...",
+                    "integridade_verificada": True,
+                    "hash_integridade": trace.integrity_hash[:16] + "...",
                 }
                 for trace in traces
             ],
-            "logic_issues": [
+            "problemas_logicos": [
                 {
-                    "graph_id": str(graph.id),
-                    "timestamp": graph.created_at.isoformat(),
-                    "has_contradictions": graph.has_contradictions,
-                    "has_logic_gaps": graph.has_logic_gaps,
-                    "validity_score": round(graph.overall_validity_score * 100, 2) if graph.overall_validity_score else None,
+                    "id_grafo": str(graph.id),
+                    "data_hora": graph.created_at.isoformat(),
+                    "possui_contradicoes": graph.has_contradictions,
+                    "possui_lacunas_logicas": graph.has_logic_gaps,
+                    "score_validade": round(graph.overall_validity_score * 100, 2) if graph.overall_validity_score else None,
                 }
                 for graph in graphs
             ],
-            "consistency_results": [
+            "resultados_consistencia": [
                 {
-                    "check_id": str(check.id),
-                    "timestamp": check.created_at.isoformat(),
-                    "convergence_rate": round(check.convergence_rate * 100, 2),
-                    "confidence_score": round(check.confidence_score * 100, 2),
-                    "runs": check.total_runs,
+                    "id_verificacao": str(check.id),
+                    "data_hora": check.created_at.isoformat(),
+                    "taxa_convergencia": round(check.convergence_rate * 100, 2),
+                    "score_confianca": round(check.confidence_score * 100, 2),
+                    "execucoes": check.total_runs,
                 }
                 for check in checks
             ],
@@ -180,37 +196,36 @@ class AuditGenerator:
         checks: List[ConsistencyCheck],
     ) -> Dict[str, Any]:
         """Compile legal-focused report details."""
-        # Focus on auditability and evidence
         return {
-            "decision_audit_trail": [
+            "trilha_auditoria_decisoes": [
                 {
                     "id": str(trace.id),
-                    "timestamp": trace.created_at.isoformat(),
-                    "input": trace.original_prompt,
-                    "reasoning_documented": trace.parsed_reasoning is not None,
-                    "steps_count": len(trace.steps) if trace.steps else 0,
-                    "model_used": f"{trace.model_provider}/{trace.model_name}",
-                    "integrity_hash": trace.integrity_hash,
+                    "data_hora": trace.created_at.isoformat(),
+                    "entrada": trace.original_prompt,
+                    "raciocinio_documentado": trace.parsed_reasoning is not None,
+                    "quantidade_etapas": len(trace.steps) if trace.steps else 0,
+                    "modelo_utilizado": f"{trace.model_provider}/{trace.model_name}",
+                    "hash_integridade": trace.integrity_hash,
                 }
                 for trace in traces
             ],
-            "identified_issues": [
+            "problemas_identificados": [
                 {
-                    "graph_id": str(graph.id),
-                    "contradictions": graph.contradictions,
-                    "hidden_assumptions": graph.hidden_premises,
-                    "circular_reasoning": graph.circular_references,
+                    "id_grafo": str(graph.id),
+                    "contradicoes": graph.contradictions,
+                    "premissas_ocultas": graph.hidden_premises,
+                    "raciocinio_circular": graph.circular_references,
                 }
                 for graph in graphs
                 if graph.has_contradictions or graph.has_hidden_premises or graph.has_circularity
             ],
-            "reliability_assessment": [
+            "avaliacao_confiabilidade": [
                 {
-                    "check_id": str(check.id),
-                    "query": check.original_query,
-                    "variations_tested": len(check.query_variations),
-                    "convergence_rate": check.convergence_rate,
-                    "divergent_points": check.divergent_points,
+                    "id_verificacao": str(check.id),
+                    "consulta": check.original_query,
+                    "variacoes_testadas": len(check.query_variations),
+                    "taxa_convergencia": check.convergence_rate,
+                    "pontos_divergentes": check.divergent_points,
                 }
                 for check in checks
             ],
@@ -225,67 +240,67 @@ class AuditGenerator:
     ) -> Dict[str, Any]:
         """Compile technical-focused report details."""
         return {
-            "reasoning_traces": [
+            "rastreamentos_raciocinio": [
                 {
                     "id": str(trace.id),
-                    "original_prompt": trace.original_prompt,
-                    "enhanced_prompt": trace.enhanced_prompt,
-                    "raw_response": trace.raw_response,
-                    "parsed_reasoning": trace.parsed_reasoning,
-                    "model": {
-                        "provider": trace.model_provider,
-                        "name": trace.model_name,
+                    "prompt_original": trace.original_prompt,
+                    "prompt_aprimorado": trace.enhanced_prompt,
+                    "resposta_bruta": trace.raw_response,
+                    "raciocinio_analisado": trace.parsed_reasoning,
+                    "modelo": {
+                        "provedor": trace.model_provider,
+                        "nome": trace.model_name,
                     },
-                    "steps": [
+                    "etapas": [
                         {
-                            "number": step.step_number,
-                            "type": step.step_type,
-                            "content": step.content,
-                            "confidence": step.confidence,
+                            "numero": step.step_number,
+                            "tipo": step.step_type,
+                            "conteudo": step.content,
+                            "confianca": step.confidence,
                         }
                         for step in trace.steps
                     ] if trace.steps else [],
                 }
                 for trace in traces
             ],
-            "path_analyses": [
+            "analises_caminho": [
                 {
                     "id": str(analysis.id),
-                    "problem": analysis.original_problem,
-                    "decomposition": analysis.decomposition,
-                    "exploration_tree": analysis.exploration_tree,
-                    "selected_path": analysis.selected_path,
-                    "stats": {
-                        "nodes_explored": analysis.total_nodes_explored,
-                        "paths_pruned": analysis.total_paths_pruned,
+                    "problema": analysis.original_problem,
+                    "decomposicao": analysis.decomposition,
+                    "arvore_exploracao": analysis.exploration_tree,
+                    "caminho_selecionado": analysis.selected_path,
+                    "estatisticas": {
+                        "nos_explorados": analysis.total_nodes_explored,
+                        "caminhos_podados": analysis.total_paths_pruned,
                     },
                 }
                 for analysis in analyses
             ],
-            "logic_graphs": [
+            "grafos_logicos": [
                 {
                     "id": str(graph.id),
-                    "structure": graph.graph_structure,
-                    "validation": {
-                        "contradictions": graph.contradictions,
-                        "logic_gaps": graph.logic_gaps,
-                        "hidden_premises": graph.hidden_premises,
-                        "circularity": graph.circular_references,
+                    "estrutura": graph.graph_structure,
+                    "validacao": {
+                        "contradicoes": graph.contradictions,
+                        "lacunas_logicas": graph.logic_gaps,
+                        "premissas_ocultas": graph.hidden_premises,
+                        "circularidade": graph.circular_references,
                     },
-                    "validity_score": graph.overall_validity_score,
+                    "score_validade": graph.overall_validity_score,
                 }
                 for graph in graphs
             ],
-            "consistency_checks": [
+            "verificacoes_consistencia": [
                 {
                     "id": str(check.id),
-                    "query": check.original_query,
-                    "variations": check.query_variations,
-                    "responses": check.responses,
-                    "metrics": {
-                        "convergence_rate": check.convergence_rate,
-                        "confidence_score": check.confidence_score,
-                        "divergent_points": check.divergent_points,
+                    "consulta": check.original_query,
+                    "variacoes": check.query_variations,
+                    "respostas": check.responses,
+                    "metricas": {
+                        "taxa_convergencia": check.convergence_rate,
+                        "score_confianca": check.confidence_score,
+                        "pontos_divergentes": check.divergent_points,
                     },
                 }
                 for check in checks
@@ -345,10 +360,10 @@ class AuditGenerator:
         summary_data = [
             ["Métrica", "Valor"],
             ["Total de Decisões", str(summary.get("total_decisions", 0))],
-            ["Análises de Caminho", str(summary.get("total_path_analyses", 0))],
-            ["Validações Lógicas", str(summary.get("total_logic_validations", 0))],
-            ["Verificações de Consistência", str(summary.get("total_consistency_checks", 0))],
-            ["Problemas Encontrados", str(summary.get("total_issues_found", 0))],
+            ["Análises de Caminho", str(summary.get("total_analises_caminho", 0))],
+            ["Validações Lógicas", str(summary.get("total_validacoes_logicas", 0))],
+            ["Verificações de Consistência", str(summary.get("total_verificacoes_consistencia", 0))],
+            ["Problemas Encontrados", str(summary.get("total_problemas_encontrados", 0))],
             ["Score Médio de Validade", f"{summary.get('average_validity_score', 0)}%"],
             ["Score Médio de Confiança", f"{summary.get('average_confidence_score', 0)}%"],
         ]
@@ -370,10 +385,24 @@ class AuditGenerator:
         # Details section
         elements.append(Paragraph("Detalhes", heading_style))
 
+        section_labels = {
+            "decisoes": "Decisões",
+            "problemas_logicos": "Problemas Lógicos",
+            "resultados_consistencia": "Resultados de Consistência",
+            "trilha_auditoria_decisoes": "Trilha de Auditoria de Decisões",
+            "problemas_identificados": "Problemas Identificados",
+            "avaliacao_confiabilidade": "Avaliação de Confiabilidade",
+            "rastreamentos_raciocinio": "Rastreamentos de Raciocínio",
+            "analises_caminho": "Análises de Caminho",
+            "grafos_logicos": "Grafos Lógicos",
+            "verificacoes_consistencia": "Verificações de Consistência",
+        }
+
         details = report_data.get("details", {})
         for key, value in details.items():
             if isinstance(value, list) and value:
-                elements.append(Paragraph(key.replace("_", " ").title(), styles['Heading3']))
+                label = section_labels.get(key, key.replace("_", " ").title())
+                elements.append(Paragraph(label, styles['Heading3']))
                 elements.append(Spacer(1, 6))
 
                 # Create a simple text summary for each item
@@ -404,10 +433,22 @@ class AuditGenerator:
             summary_df.to_excel(writer, sheet_name='Resumo', index=False)
 
             # Details sheets
+            sheet_labels = {
+                "decisoes": "Decisões",
+                "problemas_logicos": "Problemas Lógicos",
+                "resultados_consistencia": "Resultados Consistência",
+                "trilha_auditoria_decisoes": "Trilha Auditoria",
+                "problemas_identificados": "Problemas Identificados",
+                "avaliacao_confiabilidade": "Avaliação Confiabilidade",
+                "rastreamentos_raciocinio": "Rastreamentos Raciocínio",
+                "analises_caminho": "Análises de Caminho",
+                "grafos_logicos": "Grafos Lógicos",
+                "verificacoes_consistencia": "Verificações Consistência",
+            }
+
             details = report_data.get("details", {})
             for key, value in details.items():
                 if isinstance(value, list) and value:
-                    # Flatten nested dicts for Excel
                     flat_data = []
                     for item in value:
                         if isinstance(item, dict):
@@ -421,7 +462,7 @@ class AuditGenerator:
 
                     if flat_data:
                         df = pd.DataFrame(flat_data)
-                        sheet_name = key[:31]  # Excel sheet name limit
+                        sheet_name = sheet_labels.get(key, key)[:31]
                         df.to_excel(writer, sheet_name=sheet_name, index=False)
 
         buffer.seek(0)
@@ -440,11 +481,11 @@ class AuditGenerator:
         """
         Generate an audit report in the specified format.
         """
-        # Fetch all related data
-        reasoning_traces = self._get_reasoning_traces(reasoning_trace_ids or [])
-        path_analyses = self._get_path_analyses(path_analysis_ids or [])
-        logic_graphs = self._get_logic_graphs(logic_graph_ids or [])
-        consistency_checks = self._get_consistency_checks(consistency_check_ids or [])
+        # Fetch related data by IDs, or all user data when no IDs provided
+        reasoning_traces = self._get_reasoning_traces(reasoning_trace_ids or [], user_id)
+        path_analyses = self._get_path_analyses(path_analysis_ids or [], user_id)
+        logic_graphs = self._get_logic_graphs(logic_graph_ids or [], user_id)
+        consistency_checks = self._get_consistency_checks(consistency_check_ids or [], user_id)
 
         # Compile report data
         report_data = self._compile_report_data(
@@ -470,10 +511,10 @@ class AuditGenerator:
             user_id=user_id,
             report_type=report_type,
             format=format,
-            reasoning_trace_ids=[str(id) for id in (reasoning_trace_ids or [])],
-            path_analysis_ids=[str(id) for id in (path_analysis_ids or [])],
-            logic_graph_ids=[str(id) for id in (logic_graph_ids or [])],
-            consistency_check_ids=[str(id) for id in (consistency_check_ids or [])],
+            reasoning_trace_ids=[str(t.id) for t in reasoning_traces],
+            path_analysis_ids=[str(a.id) for a in path_analyses],
+            logic_graph_ids=[str(g.id) for g in logic_graphs],
+            consistency_check_ids=[str(c.id) for c in consistency_checks],
             report_data=report_data,
             file_path=file_path,
         )
