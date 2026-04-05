@@ -95,7 +95,7 @@ class ConsistencyChecker:
             temperature=0.8,
         )
 
-        content = response["content"]
+        content = re.sub(r"```(?:xml|html|text)?\s*\n?", "", response["content"]).strip()
         variations = [query]  # Include original
 
         # Parse variations
@@ -140,19 +140,22 @@ class ConsistencyChecker:
             temperature=0.2,
         )
 
-        content = response["content"]
+        content = re.sub(r"```(?:xml|html|text)?\s*\n?", "", response["content"]).strip()
 
         result = {
-            "overall_similarity": 50,
+            "overall_similarity": None,
             "pairwise_scores": {},
             "agreements": [],
             "divergences": [],
         }
 
         # Parse overall similarity
-        overall_match = re.search(r"<overall_similarity>(\d+)</overall_similarity>", content)
+        overall_match = re.search(r"<overall_similarity>\s*([\d.]+)\s*%?\s*</overall_similarity>", content)
         if overall_match:
-            result["overall_similarity"] = int(overall_match.group(1))
+            score = float(overall_match.group(1))
+            if score <= 1.0 and score > 0:
+                score = score * 100
+            result["overall_similarity"] = min(int(round(score)), 100)
 
         # Parse pairwise scores
         pairwise_match = re.search(r"<pairwise_scores>(.*?)</pairwise_scores>", content, re.DOTALL)
@@ -187,6 +190,16 @@ class ConsistencyChecker:
                 for line in text.split("\n")
                 if line.strip() and line.strip() != "-"
             ]
+
+        # Calculate overall_similarity from pairwise scores if not parsed
+        if result["overall_similarity"] is None:
+            if result["pairwise_scores"]:
+                scores = list(result["pairwise_scores"].values())
+                result["overall_similarity"] = int(round(sum(scores) / len(scores)))
+            else:
+                # Estimate from divergences: fewer divergences = higher similarity
+                num_div = len(result["divergences"])
+                result["overall_similarity"] = max(0, 100 - (num_div * 15))
 
         return result
 

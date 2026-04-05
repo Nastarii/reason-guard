@@ -6,10 +6,13 @@ Detects contradictions, logic gaps, hidden premises, and circularity.
 
 import re
 import json
+import logging
 from typing import Dict, Any, List, Optional, Tuple
 from uuid import UUID
 import networkx as nx
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.modules.llm_client import llm_client
 from app.models.reasoning import LogicGraph, LogicNode, LogicEdge, ReasoningTrace
@@ -21,12 +24,12 @@ Raciocínio:
 {reasoning}
 
 Para cada proposição, identifique:
-1. O tipo da proposição (premissa, inferência ou conclusão)
+1. O tipo da proposição (premise, inference, conclusion ou hidden_premise)
 2. O conteúdo exato
 3. Quaisquer dependências (de quais outras proposições ela depende)
-4. Se parece ser uma suposição oculta/não declarada
+4. O nível de confiança (0-100) baseado em quão bem fundamentada a proposição está
 
-Formate sua resposta como:
+Responda APENAS com as tags XML abaixo, sem blocos de código markdown:
 
 <propositions>
 <prop id="1">
@@ -35,21 +38,19 @@ Formate sua resposta como:
 <depends_on>[lista de IDs de proposições separados por vírgula, ou "none"]</depends_on>
 <confidence>[0-100]</confidence>
 </prop>
-... (repita para cada proposição)
 </propositions>
 
 <relationships>
 <rel>
-<from>[ID da proposição]</from>
-<to>[ID da proposição]</to>
+<from>[ID da proposição de origem]</from>
+<to>[ID da proposição de destino]</to>
 <type>[supports|contradicts|implies|depends_on]</type>
 <strength>[0-100]</strength>
 </rel>
-... (repita para cada relacionamento)
 </relationships>"""
 
 
-VALIDATE_LOGIC_PROMPT = """Analise a seguinte estrutura lógica em busca de problemas:
+VALIDATE_LOGIC_PROMPT = """Você é um avaliador rigoroso de lógica formal. Analise a seguinte estrutura lógica em busca de problemas:
 
 Proposições:
 {propositions}
@@ -57,13 +58,23 @@ Proposições:
 Relacionamentos:
 {relationships}
 
-Por favor, identifique:
-1. CONTRADIÇÕES: Quaisquer proposições que se contradizem
-2. LACUNAS LÓGICAS: Passos faltantes na cadeia de raciocínio
+Identifique TODOS os problemas presentes:
+1. CONTRADIÇÕES: Proposições que se contradizem direta ou indiretamente
+2. LACUNAS LÓGICAS: Passos faltantes ou saltos injustificados na cadeia de raciocínio
 3. PREMISSAS OCULTAS: Suposições não declaradas das quais o raciocínio depende
-4. CIRCULARIDADE: Quaisquer padrões de raciocínio circular
+4. CIRCULARIDADE: Padrões de raciocínio circular (A depende de B, B depende de A)
 
-Formate sua resposta como:
+IMPORTANTE - Critérios para o score de validade (overall_validity):
+- 90 a 100: Raciocínio sólido, sem contradições, sem lacunas significativas, premissas bem fundamentadas
+- 75 a 89: Raciocínio bom com problemas menores (poucas premissas ocultas de baixa importância)
+- 60 a 74: Raciocínio razoável com lacunas ou premissas ocultas moderadas
+- 40 a 59: Raciocínio fraco com contradições de baixa severidade ou múltiplas lacunas
+- 20 a 39: Raciocínio problemático com contradições significativas ou circularidade
+- 0 a 19: Raciocínio gravemente falho com múltiplas contradições de alta severidade
+
+NÃO use 50 como valor padrão. Avalie cuidadosamente cada aspecto e justifique o score atribuído.
+
+Responda APENAS com as tags XML abaixo, sem blocos de código markdown:
 
 <analysis>
 <contradictions>
@@ -72,7 +83,6 @@ Formate sua resposta como:
 <explanation>[Por que elas se contradizem]</explanation>
 <severity>[high|medium|low]</severity>
 </item>
-... (se houver)
 </contradictions>
 
 <logic_gaps>
@@ -81,7 +91,6 @@ Formate sua resposta como:
 <missing>[Qual passo está faltando]</missing>
 <severity>[high|medium|low]</severity>
 </item>
-... (se houver)
 </logic_gaps>
 
 <hidden_premises>
@@ -90,7 +99,6 @@ Formate sua resposta como:
 <premise>[A suposição oculta]</premise>
 <importance>[high|medium|low]</importance>
 </item>
-... (se houver)
 </hidden_premises>
 
 <circularity>
@@ -98,10 +106,9 @@ Formate sua resposta como:
 <cycle>[IDs das proposições no ciclo]</cycle>
 <explanation>[Como a circularidade se manifesta]</explanation>
 </item>
-... (se houver)
 </circularity>
 
-<overall_validity>[0-100]</overall_validity>
+<overall_validity>[score numérico entre 0 e 100 baseado nos critérios acima]</overall_validity>
 </analysis>"""
 
 
@@ -110,6 +117,12 @@ class LogicValidator:
 
     def __init__(self, db: Session):
         self.db = db
+
+    def _clean_llm_response(self, content: str) -> str:
+        """Strip markdown code blocks and extra whitespace from LLM response."""
+        cleaned = re.sub(r"```(?:xml|html|text)?\s*\n?", "", content)
+        cleaned = cleaned.strip()
+        return cleaned
 
     async def _extract_propositions(
         self,
@@ -127,12 +140,14 @@ class LogicValidator:
             temperature=0.3,
         )
 
-        content = response["content"]
+        raw_content = response["content"]
+        content = self._clean_llm_response(raw_content)
+        logger.info(f"[LogicValidator] Extract propositions - raw (first 300 chars): {raw_content[:300]}")
         propositions = []
         relationships = []
 
         # Parse propositions
-        prop_pattern = r'<prop id="(\d+)">(.*?)</prop>'
+        prop_pattern = r'<prop\s+id\s*=\s*"(\d+)">(.*?)</prop>'
         for match in re.finditer(prop_pattern, content, re.DOTALL):
             prop_id = match.group(1)
             prop_content = match.group(2)
@@ -171,6 +186,7 @@ class LogicValidator:
                     "strength": int(strength_match.group(1)) / 100 if strength_match else None,
                 })
 
+        logger.info(f"[LogicValidator] Extracted {len(propositions)} propositions, {len(relationships)} relationships")
         return propositions, relationships
 
     async def _validate_logic(
@@ -202,7 +218,11 @@ class LogicValidator:
             temperature=0.2,
         )
 
-        content = response["content"]
+        raw_content = response["content"]
+        content = self._clean_llm_response(raw_content)
+
+        logger.info(f"[LogicValidator] Raw LLM response (first 500 chars): {raw_content[:500]}")
+        logger.info(f"[LogicValidator] Cleaned content (first 500 chars): {content[:500]}")
 
         # Parse validation results
         validation = {
@@ -210,7 +230,7 @@ class LogicValidator:
             "logic_gaps": [],
             "hidden_premises": [],
             "circularity": [],
-            "overall_validity": 50,
+            "overall_validity": None,
         }
 
         # Parse contradictions
@@ -275,10 +295,49 @@ class LogicValidator:
                         "explanation": expl_match.group(1).strip() if expl_match else "",
                     })
 
-        # Parse overall validity
-        validity_match = re.search(r"<overall_validity>(\d+)</overall_validity>", content)
+        # Parse overall validity from XML tag
+        validity_match = re.search(r"<overall_validity>\s*([\d.]+)\s*%?\s*</overall_validity>", content)
         if validity_match:
-            validation["overall_validity"] = int(validity_match.group(1))
+            score = float(validity_match.group(1))
+            if score <= 1.0 and score > 0:
+                score = score * 100
+            validation["overall_validity"] = min(int(round(score)), 100)
+            logger.info(f"[LogicValidator] Parsed validity from XML tag: {validation['overall_validity']}")
+
+        # Fallback: try to find a numeric score near "overall_validity" or "validity" keywords
+        if validation["overall_validity"] is None:
+            fallback_match = re.search(r"(?:overall[_\s]?validity|validade[_\s]?geral)[:\s]*(\d+)", content, re.IGNORECASE)
+            if fallback_match:
+                score = int(fallback_match.group(1))
+                validation["overall_validity"] = min(score, 100)
+                logger.info(f"[LogicValidator] Parsed validity from keyword fallback: {validation['overall_validity']}")
+
+        # Final fallback: calculate score based on issues found
+        if validation["overall_validity"] is None:
+            penalty = 0
+            severity_weights = {"high": 15, "medium": 10, "low": 5}
+
+            for contradiction in validation["contradictions"]:
+                penalty += severity_weights.get(contradiction.get("severity", "medium"), 10)
+
+            for gap in validation["logic_gaps"]:
+                penalty += severity_weights.get(gap.get("severity", "medium"), 10)
+
+            for hidden in validation["hidden_premises"]:
+                penalty += severity_weights.get(hidden.get("importance", "medium"), 10)
+
+            for _ in validation["circularity"]:
+                penalty += 10
+
+            validation["overall_validity"] = max(0, 100 - penalty)
+            logger.info(
+                f"[LogicValidator] Used calculated fallback. Penalty={penalty}, "
+                f"Issues: contradictions={len(validation['contradictions'])}, "
+                f"gaps={len(validation['logic_gaps'])}, "
+                f"hidden={len(validation['hidden_premises'])}, "
+                f"circular={len(validation['circularity'])}, "
+                f"Final score={validation['overall_validity']}"
+            )
 
         return validation
 
